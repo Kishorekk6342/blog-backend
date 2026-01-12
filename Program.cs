@@ -1,36 +1,44 @@
+﻿using Microsoft.EntityFrameworkCore;
+using Blog.Backend.Data;
 
-namespace Blog.Backend
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Add DbContext
+builder.Services.AddDbContext<BlogDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Supabase")));
+
+// Add CORS
+builder.Services.AddCors(options =>
 {
-    public class Program
+    options.AddPolicy("AllowBlazor", policy =>
     {
-        public static void Main(string[] args)
-        {
-            var builder = WebApplication.CreateBuilder(args);
-
-            // Add services to the container.
-
-            builder.Services.AddControllers();
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
-
-            var app = builder.Build();
-
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
-            {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
-
-            app.UseHttpsRedirection();
-
-            app.UseAuthorization();
+        policy.WithOrigins("https://localhost:7022", "http://localhost:5000")
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
 
 
-            app.MapControllers();
+var app = builder.Build();
 
-            app.Run();
-        }
-    }
+// Configure the HTTP request pipeline
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
+
+app.UseHttpsRedirection();
+
+app.UseCors("AllowBlazor");
+
+app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
