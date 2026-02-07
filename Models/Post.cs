@@ -28,6 +28,9 @@ namespace Blog.Backend.Models
         [Column("created_at")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        [Column("updated_at")]  // ← THIS IS CRITICAL!
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
         // Navigation property
         public User? User { get; set; }
     }

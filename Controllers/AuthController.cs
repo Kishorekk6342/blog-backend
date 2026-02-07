@@ -1,10 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+﻿using BCrypt.Net;
 using Blog.Backend.Data;
-using Blog.Backend.Models;
 using Blog.Backend.DTOs;
-using System.Security.Cryptography;
-using System.Text;
+using Blog.Backend.Models;
+using Blog.Backend.Services;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Blog.Backend.Controllers
 {
@@ -15,151 +15,93 @@ namespace Blog.Backend.Controllers
         private readonly BlogDbContext _context;
         private readonly ILogger<AuthController> _logger;
 
-        public AuthController(BlogDbContext context, ILogger<AuthController> logger)
+        private readonly JwtService _jwtService;
+
+        public AuthController(
+            BlogDbContext context,
+            ILogger<AuthController> logger,
+            JwtService jwtService)
         {
             _context = context;
             _logger = logger;
+            _jwtService = jwtService;
         }
 
 
+        // ===================== SIGNUP =====================
         [HttpPost("signup")]
         public async Task<IActionResult> Signup([FromBody] SignupDto dto)
         {
             try
             {
-                _logger.LogInformation($"Signup attempt for username: {dto.Username}, email: {dto.Email}");
-
-                // Basic validation
-                if (string.IsNullOrEmpty(dto.Username) || string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Password))
+                if (string.IsNullOrWhiteSpace(dto.Username) ||
+                    string.IsNullOrWhiteSpace(dto.Email) ||
+                    string.IsNullOrWhiteSpace(dto.Password))
                 {
-                    _logger.LogWarning("Signup failed: Missing required fields");
-                    return BadRequest(new { message = "All fields are required" });
+                    return BadRequest("All fields are required");
                 }
 
                 if (dto.Password.Length < 6)
-                {
-                    _logger.LogWarning("Signup failed: Password too short");
-                    return BadRequest(new { message = "Password must be at least 6 characters" });
-                }
+                    return BadRequest("Password must be at least 6 characters");
 
-                // Check username
-                _logger.LogInformation("Checking if username exists...");
-                var usernameExists = await _context.Users
-                    .AnyAsync(u => u.Username.ToLower() == dto.Username.ToLower());
+                if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+                    return BadRequest("Email already exists");
 
-                if (usernameExists)
-                {
-                    _logger.LogWarning($"Signup failed: Username '{dto.Username}' already exists");
-                    return BadRequest(new { message = "Username already exists" });
-                }
+                if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
+                    return BadRequest("Username already exists");
 
-                // Check email
-                _logger.LogInformation("Checking if email exists...");
-                var emailExists = await _context.Users
-                    .AnyAsync(u => u.Email.ToLower() == dto.Email.ToLower());
-
-                if (emailExists)
-                {
-                    _logger.LogWarning($"Signup failed: Email '{dto.Email}' already exists");
-                    return BadRequest(new { message = "Email already exists" });
-                }
-
-                // Hash password
-                _logger.LogInformation("Hashing password...");
-                string passwordHash;
-                using (var sha256 = SHA256.Create())
-                {
-                    var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(dto.Password));
-                    passwordHash = Convert.ToBase64String(bytes);
-                }
-
-                // Create user
-                _logger.LogInformation("Creating new user...");
                 var user = new User
                 {
                     Id = Guid.NewGuid(),
                     Username = dto.Username,
                     Email = dto.Email,
-                    PasswordHash = passwordHash,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                     CreatedAt = DateTime.UtcNow
                 };
 
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation($"User created successfully with ID: {user.Id}");
-
-                // Return simple response without JWT for now
-                return Ok(new
-                {
-                    message = "User created successfully",
-                    userId = user.Id,
-                    username = user.Username
-                });
+                return Ok("User registered successfully");
             }
-            catch (DbUpdateException dbEx)
+            catch (DbUpdateException)
             {
-                _logger.LogError($"Database error during signup: {dbEx.Message}");
-                _logger.LogError($"Inner exception: {dbEx.InnerException?.Message}");
-                return StatusCode(500, new { message = "Database error", error = dbEx.InnerException?.Message ?? dbEx.Message });
+                return BadRequest("Username or Email already exists");
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Unexpected error during signup: {ex.Message}");
-                _logger.LogError($"Stack trace: {ex.StackTrace}");
-                return StatusCode(500, new { message = "Server error", error = ex.Message });
+                _logger.LogError(ex, "Signup error");
+                return StatusCode(500, "Server error");
             }
         }
 
+        // ===================== LOGIN =====================
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto dto)
         {
-            try
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == dto.Email.ToLower());
+
+            if (user == null)
+                return Unauthorized("Invalid email or password");
+
+            bool isPasswordValid = BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
+            if (!isPasswordValid)
+                return Unauthorized("Invalid email or password");
+
+            // ✅ REAL JWT TOKEN
+            var token = _jwtService.GenerateToken(user);
+
+            return Ok(new AuthResponse
             {
-                _logger.LogInformation($"Login attempt for email: {dto.Email}");
-
-                if (string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Password))
-                {
-                    return BadRequest(new { message = "Email and password are required" });
-                }
-
-                var user = await _context.Users
-                    .FirstOrDefaultAsync(u => u.Email.ToLower() == dto.Email.ToLower());
-
-                if (user == null)
-                {
-                    _logger.LogWarning($"Login failed: User not found for email {dto.Email}");
-                    return Unauthorized(new { message = "Invalid email or password" });
-                }
-
-                // Hash the provided password
-                string passwordHash;
-                using (var sha256 = SHA256.Create())
-                {
-                    var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(dto.Password));
-                    passwordHash = Convert.ToBase64String(bytes);
-                }
-
-                if (user.PasswordHash != passwordHash)
-                {
-                    _logger.LogWarning($"Login failed: Invalid password for email {dto.Email}");
-                    return Unauthorized(new { message = "Invalid email or password" });
-                }
-
-                _logger.LogInformation($"Login successful for user: {user.Username}");
-
-                return Ok(new
-                {
-                    message = "Login successful",
-                    userId = user.Id,
-                    username = user.Username
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error during login: {ex.Message}");
-                return StatusCode(500, new { message = "Server error", error = ex.Message });
-            }
+                Token = token
+            });
         }
+    }
+
+        // ===================== RESPONSE DTO =====================
+        public class AuthResponse
+    {
+        public string Token { get; set; } = string.Empty;
     }
 }

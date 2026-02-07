@@ -1,5 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Blog.Backend.Models;
+﻿using Blog.Backend.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace Blog.Backend.Data
 {
@@ -17,54 +17,29 @@ namespace Blog.Backend.Data
         {
             base.OnModelCreating(modelBuilder);
 
-            // User configuration
-            modelBuilder.Entity<User>(entity =>
-            {
-                entity.ToTable("users");
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.Username).HasColumnName("username").IsRequired();
-                entity.Property(e => e.Email).HasColumnName("email").IsRequired();
-                entity.Property(e => e.PasswordHash).HasColumnName("password_hash").IsRequired();
-                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            // ============ POST CONFIGURATION ============
+            modelBuilder.Entity<Post>()
+                .HasOne(p => p.User)
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
-                // Unique constraints
-                entity.HasIndex(e => e.Username).IsUnique();
-                entity.HasIndex(e => e.Email).IsUnique();
-            });
+            // ============ FOLLOW CONFIGURATION ============
+            
 
-            // Post configuration
-            modelBuilder.Entity<Post>(entity =>
-            {
-                entity.ToTable("posts");
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-                entity.Property(e => e.Title).HasColumnName("title").IsRequired();
-                entity.Property(e => e.Content).HasColumnName("content").IsRequired();
-                entity.Property(e => e.IsPublic).HasColumnName("is_public");
-                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            // Follower relationship
+            modelBuilder.Entity<Follow>()
+                .HasOne(f => f.Follower)
+                .WithMany()
+                .HasForeignKey(f => f.FollowerId)
+                .OnDelete(DeleteBehavior.Cascade);
 
-                // Foreign key
-                entity.HasOne<User>()
-                    .WithMany(u => u.Posts)
-                    .HasForeignKey(p => p.UserId)
-                    .OnDelete(DeleteBehavior.Cascade);
-            });
-
-            // Follow configuration
-            modelBuilder.Entity<Follow>(entity =>
-            {
-                entity.ToTable("follows");
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.FollowerId).HasColumnName("follower_id");
-                entity.Property(e => e.FollowingId).HasColumnName("following_id");
-                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
-
-                // Composite unique constraint
-                entity.HasIndex(e => new { e.FollowerId, e.FollowingId }).IsUnique();
-            });
+            // Following relationship
+            modelBuilder.Entity<Follow>()
+                .HasOne(f => f.Following)
+                .WithMany()
+                .HasForeignKey(f => f.FollowingId)
+                .OnDelete(DeleteBehavior.Restrict); // Prevent cascade delete conflicts
         }
     }
 }
