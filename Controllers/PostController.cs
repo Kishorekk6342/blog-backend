@@ -49,8 +49,7 @@ namespace Blog.Backend.Controllers
                     Content = dto.Content.Trim(),
                     IsPublic = dto.IsPublic,
                     CreatedAt = now,
-                    UpdatedAt = now  // ← CRITICAL: Must set this!
-                                     // DO NOT set User property here!
+                    UpdatedAt = now
                 };
 
                 _context.Posts.Add(post);
@@ -68,6 +67,7 @@ namespace Blog.Backend.Controllers
                 return StatusCode(500, new { error = "Server error", details = ex.Message });
             }
         }
+
         // GET: api/Post/my-posts - Get current user's posts
         [HttpGet("my-posts")]
         [Authorize]
@@ -169,67 +169,80 @@ namespace Blog.Backend.Controllers
             }
         }
 
-        // GET: api/Post/feed - Get feed (public posts + followed users' private posts)
+        // GET: api/Post/feed - Get feed (public posts + own posts + followed users' private posts)
         [HttpGet("feed")]
         [AllowAnonymous]
         public async Task<IActionResult> GetFeed(
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 20)
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
         {
-            Guid? userId = null;
-
-            // ✅ Only read userId IF authenticated
-            if (User.Identity?.IsAuthenticated == true)
+            try
             {
-                var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (Guid.TryParse(userIdClaim, out var parsedId))
+                Guid? userId = null;
+
+                if (User.Identity?.IsAuthenticated == true)
                 {
-                    userId = parsedId;
+                    var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                    if (Guid.TryParse(claim, out var parsed))
+                        userId = parsed;
                 }
-            }
 
-            IQueryable<Post> query = _context.Posts;
+                IQueryable<Post> query = _context.Posts.AsQueryable();
 
-            if (userId == null)
-            {
-                // 🔓 Anonymous user → ONLY public posts
-                query = query.Where(p => p.IsPublic);
-            }
-            else
-            {
-                // 🔐 Logged-in user → public posts + followed users
-                var followingIds = await _context.Follows
-                    .Where(f => f.FollowerId == userId)
-                    .Select(f => f.FollowingId)
+                if (userId == null)
+                {
+                    // 🔓 Anonymous users → ONLY public posts
+                    query = query.Where(p => p.IsPublic);
+                }
+                else
+                {
+                    // 🔐 Logged in → Get list of users they follow
+                    var followingIds = await _context.Follows
+                        .Where(f => f.FollowerId == userId.Value)
+                        .Select(f => f.FollowingId)
+                        .ToListAsync();
+
+                    // Show posts that are:
+                    // 1. Public posts from anyone
+                    // 2. Private posts from users you follow
+                    // 3. Your own posts (public or private)
+                    query = query.Where(p =>
+                        p.IsPublic ||                           // All public posts
+                        p.UserId == userId.Value ||             // Your own posts
+                        (followingIds.Contains(p.UserId))       // Posts from followed users (including their private posts)
+                    );
+                }
+
+                var posts = await query
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(p => new PostResponseDto
+                    {
+                        Id = p.Id,
+                        Title = p.Title,
+                        Content = p.Content,
+                        AuthorId = p.UserId,
+                        AuthorName = _context.Users
+                            .Where(u => u.Id == p.UserId)
+                            .Select(u => u.Username)
+                            .FirstOrDefault() ?? "Unknown",
+                        IsPublic = p.IsPublic,
+                        CreatedAt = p.CreatedAt,
+                        UpdatedAt = p.UpdatedAt,
+                        LikesCount = 0,
+                        CommentsCount = 0,
+                        IsLiked = false
+                    })
                     .ToListAsync();
 
-                query = query.Where(p => p.IsPublic || followingIds.Contains(p.UserId));
+                return Ok(posts);
             }
-
-            var posts = await query
-                .OrderByDescending(p => p.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(p => new PostResponseDto
-                {
-                    Id = p.Id,
-                    Title = p.Title,
-                    Content = p.Content,
-                    AuthorId = p.UserId,
-                    AuthorName = _context.Users
-                        .Where(u => u.Id == p.UserId)
-                        .Select(u => u.Username)
-                        .FirstOrDefault() ?? "Unknown",
-                    IsPublic = p.IsPublic,
-                    CreatedAt = p.CreatedAt,
-                    UpdatedAt = p.UpdatedAt,
-                    LikesCount = 0,
-                    CommentsCount = 0,
-                    IsLiked = false
-                })
-                .ToListAsync();
-
-            return Ok(posts);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting feed");
+                return StatusCode(500, new { error = "Server error", details = ex.Message });
+            }
         }
 
         // GET: api/Post/{id} - Get specific post

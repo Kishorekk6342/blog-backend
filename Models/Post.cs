@@ -14,6 +14,9 @@ namespace Blog.Backend.Models
         [Column("user_id")]
         public Guid UserId { get; set; }
 
+        [ForeignKey(nameof(UserId))]   // ✅ IMPORTANT
+        public User User { get; set; } = null!;
+
         [Required]
         [Column("title")]
         public string Title { get; set; } = string.Empty;
@@ -26,12 +29,9 @@ namespace Blog.Backend.Models
         public bool IsPublic { get; set; } = true;
 
         [Column("created_at")]
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; }
 
-        [Column("updated_at")]  // ← THIS IS CRITICAL!
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-
-        // Navigation property
-        public User? User { get; set; }
+        [Column("updated_at")]
+        public DateTime UpdatedAt { get; set; }
     }
 }
