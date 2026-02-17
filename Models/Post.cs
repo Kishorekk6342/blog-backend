@@ -26,7 +26,7 @@ namespace Blog.Backend.Models
         public string Content { get; set; } = string.Empty;
 
         [Column("is_public")]
-        public bool IsPublic { get; set; } = true;
+        public bool IsPublic { get; set; }   // ✅ NO DEFAULT
 
         [Column("created_at")]
         public DateTime CreatedAt { get; set; }

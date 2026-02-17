@@ -307,7 +307,7 @@ namespace Blog.Backend.Controllers
         // PUT: api/Post/{id} - Update post
         [HttpPut("{id}")]
         [Authorize]
-        public async Task<IActionResult> UpdatePost(Guid id, [FromBody] UpdatePostDto dto)
+        public async Task<IActionResult> UpdatePost(Guid id, [FromBody] CreatePostDto dto)
         {
             try
             {
