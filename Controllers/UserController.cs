@@ -274,6 +274,67 @@ namespace Blog.Backend.Controllers
             }
         }
 
+        // GET: api/User/settings
+        [HttpGet("settings")]
+        public async Task<IActionResult> GetSettings()
+        {
+            var userId = GetCurrentUserId();
+            if (userId == Guid.Empty)
+                return Unauthorized();
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found");
+
+            return Ok(new UserSettingsDto
+            {
+                Email = user.Email,
+                EmailNotifications = user.EmailNotifications,
+                PostNotifications = user.PostNotifications,
+                CommentNotifications = user.CommentNotifications,
+                PrivateProfile = user.PrivateProfile
+            });
+        }
+
+        // PUT: api/User/notification-settings
+        [HttpPut("notification-settings")]
+        public async Task<IActionResult> UpdateNotificationSettings(
+            [FromBody] NotificationSettingsDto dto)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == Guid.Empty)
+                return Unauthorized();
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found");
+
+            user.EmailNotifications = dto.EmailNotifications;
+            user.PostNotifications = dto.PostNotifications;
+            user.CommentNotifications = dto.CommentNotifications;
+
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Notification settings updated" });
+        }
+
+        // PUT: api/User/privacy-settings
+        [HttpPut("privacy-settings")]
+        public async Task<IActionResult> UpdatePrivacySettings(
+            [FromBody] PrivacySettingsDto dto)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == Guid.Empty)
+                return Unauthorized();
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+                return NotFound("User not found");
+
+            user.PrivateProfile = dto.PrivateProfile;
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Privacy settings updated" });
+        }
+
         // DELETE: api/User/profile-picture (Delete profile picture)
         [HttpDelete("profile-picture")]
         public async Task<IActionResult> DeleteProfilePicture()
