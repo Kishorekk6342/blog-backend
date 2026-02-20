@@ -33,8 +33,13 @@ namespace Blog.Backend.Controllers
 
         private Guid GetCurrentUserId()
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            return Guid.TryParse(userIdClaim, out var userId) ? userId : Guid.Empty;
+            var userIdClaim =
+                User.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
+                User.FindFirst("sub")?.Value;
+
+            return Guid.TryParse(userIdClaim, out var userId)
+                ? userId
+                : Guid.Empty;
         }
 
         // GET: api/User/profile (Get current user's profile)
@@ -65,6 +70,8 @@ namespace Blog.Backend.Controllers
                 PostCount = await _context.Posts.CountAsync(p => p.UserId == user.Id),
                 FollowerCount = await _context.Follows.CountAsync(f => f.FollowingId == user.Id),
                 FollowingCount = await _context.Follows.CountAsync(f => f.FollowerId == user.Id),
+                PrivateProfile = user.PrivateProfile  // ← ADD THIS
+
             };
 
             return Ok(dto);
@@ -95,6 +102,8 @@ namespace Blog.Backend.Controllers
                 PostCount = await _context.Posts.CountAsync(p => p.UserId == user.Id),
                 FollowerCount = await _context.Follows.CountAsync(f => f.FollowingId == user.Id),
                 FollowingCount = await _context.Follows.CountAsync(f => f.FollowerId == user.Id),
+                PrivateProfile = user.PrivateProfile  // ← ADD THIS
+
             };
 
             return Ok(dto);
@@ -317,21 +326,41 @@ namespace Blog.Backend.Controllers
             return Ok(new { message = "Notification settings updated" });
         }
 
+
+
         // PUT: api/User/privacy-settings
         [HttpPut("privacy-settings")]
         public async Task<IActionResult> UpdatePrivacySettings(
-            [FromBody] PrivacySettingsDto dto)
+      [FromBody] PrivacySettingsDto dto)
         {
-            var userId = GetCurrentUserId();
+            Console.WriteLine("🔥 PRIVACY ENDPOINT HIT 🔥");
+            Console.WriteLine($"DTO VALUE: {dto.PrivateProfile}");
+
+            var userIdClaim1 = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var userIdClaim2 = User.FindFirst("sub")?.Value;
+
+            Console.WriteLine($"NameIdentifier: {userIdClaim1}");
+            Console.WriteLine($"sub: {userIdClaim2}");
+
+            var userId =
+                Guid.TryParse(userIdClaim1, out var id1) ? id1 :
+                Guid.TryParse(userIdClaim2, out var id2) ? id2 :
+                Guid.Empty;
+
+            Console.WriteLine($"Resolved UserId: {userId}");
+
             if (userId == Guid.Empty)
-                return Unauthorized();
+                return Unauthorized("USER ID EMPTY");
 
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
-                return NotFound("User not found");
+                return NotFound("USER NOT FOUND");
 
             user.PrivateProfile = dto.PrivateProfile;
             await _context.SaveChangesAsync();
+
+            Console.WriteLine("✅ DB SAVE EXECUTED");
+
             return Ok(new { message = "Privacy settings updated" });
         }
 

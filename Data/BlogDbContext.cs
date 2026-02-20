@@ -12,8 +12,10 @@
             public DbSet<User> Users { get; set; }
             public DbSet<Post> Posts { get; set; }
             public DbSet<Follow> Follows { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
+        public DbSet<FollowRequest> FollowRequests { get; set; }
 
-            protected override void OnModelCreating(ModelBuilder modelBuilder)
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
                 base.OnModelCreating(modelBuilder);
 
@@ -23,6 +25,26 @@
  .WithMany(u => u.Posts)   // ✅ EXPLICIT
  .HasForeignKey(p => p.UserId)
  .OnDelete(DeleteBehavior.Cascade);
+
+            // ============ FOLLOW REQUEST CONFIGURATION ============
+            modelBuilder.Entity<FollowRequest>()
+                .HasOne(r => r.Requester)
+                .WithMany()
+                .HasForeignKey(r => r.RequesterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<FollowRequest>()
+                .HasOne(r => r.Target)
+                .WithMany()
+                .HasForeignKey(r => r.TargetId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // ============ NOTIFICATION CONFIGURATION ============
+            modelBuilder.Entity<Notification>()
+                .HasOne(n => n.User)
+                .WithMany()
+                .HasForeignKey(n => n.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // ============ FOLLOW CONFIGURATION ============
 
