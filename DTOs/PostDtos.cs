@@ -11,9 +11,12 @@
 
             [JsonPropertyName("isPublic")]
             public bool IsPublic { get; set; }
-        }
+            public string? ImageUrl { get; set; }
 
-        public class UpdatePostDto
+
+    }
+
+    public class UpdatePostDto
         {
             public string Title { get; set; } = string.Empty;
             public string Content { get; set; } = string.Empty;
@@ -32,6 +35,7 @@
             public DateTime UpdatedAt { get; set; }
             public int LikesCount { get; set; }
             public int CommentsCount { get; set; }
+            public string? ImageUrl { get; set; }
             public bool IsLiked { get; set; }
         }
     }

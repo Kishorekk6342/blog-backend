@@ -47,6 +47,7 @@ namespace Blog.Backend.Controllers
                     UserId = userId,
                     Title = dto.Title.Trim(),
                     Content = dto.Content.Trim(),
+                    ImageUrl = dto.ImageUrl,
                     IsPublic = dto.IsPublic,
                     CreatedAt = now,
                     UpdatedAt = now
@@ -93,6 +94,7 @@ namespace Blog.Backend.Controllers
                         AuthorId = p.UserId,
                         AuthorName = _context.Users.Where(u => u.Id == p.UserId).Select(u => u.Username).FirstOrDefault() ?? "Unknown",
                         CreatedAt = p.CreatedAt,
+                        ImageUrl = p.ImageUrl,
                         UpdatedAt = p.UpdatedAt,
                         LikesCount = 0,
                         CommentsCount = 0,
@@ -153,6 +155,7 @@ namespace Blog.Backend.Controllers
                         AuthorId = p.UserId,
                         AuthorName = _context.Users.Where(u => u.Id == p.UserId).Select(u => u.Username).FirstOrDefault() ?? "Unknown",
                         CreatedAt = p.CreatedAt,
+                        ImageUrl = p.ImageUrl,
                         UpdatedAt = p.UpdatedAt,
                         LikesCount = 0,
                         CommentsCount = 0,
@@ -228,6 +231,7 @@ namespace Blog.Backend.Controllers
                             .Select(u => u.Username)
                             .FirstOrDefault() ?? "Unknown",
                         IsPublic = p.IsPublic,
+                        ImageUrl = p.ImageUrl,
                         CreatedAt = p.CreatedAt,
                         UpdatedAt = p.UpdatedAt,
                         LikesCount = 0,
@@ -270,6 +274,7 @@ namespace Blog.Backend.Controllers
                         AuthorId = p.UserId,
                         AuthorName = _context.Users.Where(u => u.Id == p.UserId).Select(u => u.Username).FirstOrDefault() ?? "Unknown",
                         IsPublic = p.IsPublic,
+                        ImageUrl = p.ImageUrl,
                         CreatedAt = p.CreatedAt,
                         UpdatedAt = p.UpdatedAt,
                         LikesCount = 0,
@@ -328,6 +333,13 @@ namespace Blog.Backend.Controllers
                 post.Title = dto.Title.Trim();
                 post.Content = dto.Content.Trim();
                 post.IsPublic = dto.IsPublic;
+
+                // 🔥 IMPORTANT: Update image ONLY if new one is provided
+                if (!string.IsNullOrEmpty(dto.ImageUrl))
+                {
+                    post.ImageUrl = dto.ImageUrl;
+                }
+
                 post.UpdatedAt = DateTime.UtcNow;
 
                 await _context.SaveChangesAsync();

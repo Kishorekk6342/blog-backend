@@ -31,6 +31,9 @@ namespace Blog.Backend.Models
         [Column("created_at")]
         public DateTime CreatedAt { get; set; }
 
+        [Column("image_url")]
+        public string? ImageUrl { get; set; }
+
         [Column("updated_at")]
         public DateTime UpdatedAt { get; set; }
     }
