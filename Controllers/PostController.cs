@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Blog.Backend.Data;
+using Blog.Backend.DTOs;
+using Blog.Backend.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Blog.Backend.Data;
-using Blog.Backend.Models;
-using Blog.Backend.DTOs;
+using Supabase.Gotrue;
 using System.Security.Claims;
 
 namespace Blog.Backend.Controllers
@@ -76,11 +77,7 @@ namespace Blog.Backend.Controllers
         {
             try
             {
-                var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-                {
-                    return Unauthorized("Invalid user token");
-                }
+                var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
                 var posts = await _context.Posts
                     .Where(p => p.UserId == userId)
@@ -92,13 +89,20 @@ namespace Blog.Backend.Controllers
                         Content = p.Content,
                         IsPublic = p.IsPublic,
                         AuthorId = p.UserId,
-                        AuthorName = _context.Users.Where(u => u.Id == p.UserId).Select(u => u.Username).FirstOrDefault() ?? "Unknown",
+                        AuthorName = _context.Users
+                            .Where(u => u.Id == p.UserId)
+                            .Select(u => u.Username)
+                            .FirstOrDefault() ?? "Unknown",
+
                         CreatedAt = p.CreatedAt,
-                        ImageUrl = p.ImageUrl,
                         UpdatedAt = p.UpdatedAt,
-                        LikesCount = 0,
-                        CommentsCount = 0,
-                        IsLiked = false
+                        ImageUrl = p.ImageUrl,
+
+                        // 🔥 FIXED
+                        LikesCount = _context.Likes.Count(l => l.PostId == p.Id),
+                        CommentsCount = _context.Comments.Count(c => c.PostId == p.Id),
+                        IsLiked = _context.Likes
+                            .Any(l => l.PostId == p.Id && l.UserId == userId)
                     })
                     .ToListAsync();
 
@@ -111,7 +115,6 @@ namespace Blog.Backend.Controllers
             }
         }
 
-        // GET: api/Post/user/{userId} - Get user's posts (respects privacy)
         [HttpGet("user/{userId}")]
         [Authorize]
         public async Task<IActionResult> GetUserPosts(Guid userId)
@@ -126,19 +129,16 @@ namespace Blog.Backend.Controllers
                     currentUserId = parsedId;
                 }
 
-                // Check if current user follows the target user
                 bool isFollowing = false;
+
                 if (currentUserId.HasValue)
                 {
                     isFollowing = await _context.Follows
                         .AnyAsync(f => f.FollowerId == currentUserId.Value && f.FollowingId == userId);
                 }
 
-                // Get posts based on privacy
                 var query = _context.Posts.Where(p => p.UserId == userId);
 
-                // If viewing own profile, show all posts
-                // If viewing other's profile, show public posts OR private posts if following
                 if (currentUserId != userId)
                 {
                     query = query.Where(p => p.IsPublic || isFollowing);
@@ -153,13 +153,20 @@ namespace Blog.Backend.Controllers
                         Content = p.Content,
                         IsPublic = p.IsPublic,
                         AuthorId = p.UserId,
-                        AuthorName = _context.Users.Where(u => u.Id == p.UserId).Select(u => u.Username).FirstOrDefault() ?? "Unknown",
+                        AuthorName = _context.Users
+                            .Where(u => u.Id == p.UserId)
+                            .Select(u => u.Username)
+                            .FirstOrDefault() ?? "Unknown",
+
                         CreatedAt = p.CreatedAt,
-                        ImageUrl = p.ImageUrl,
                         UpdatedAt = p.UpdatedAt,
-                        LikesCount = 0,
-                        CommentsCount = 0,
-                        IsLiked = false
+                        ImageUrl = p.ImageUrl,
+
+                        // 🔥 FIXED
+                        LikesCount = _context.Likes.Count(l => l.PostId == p.Id),
+                        CommentsCount = _context.Comments.Count(c => c.PostId == p.Id),
+                        IsLiked = currentUserId.HasValue && _context.Likes
+                            .Any(l => l.PostId == p.Id && l.UserId == currentUserId.Value)
                     })
                     .ToListAsync();
 
@@ -176,8 +183,8 @@ namespace Blog.Backend.Controllers
         [HttpGet("feed")]
         [AllowAnonymous]
         public async Task<IActionResult> GetFeed(
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 20)
+      [FromQuery] int page = 1,
+      [FromQuery] int pageSize = 20)
         {
             try
             {
@@ -194,25 +201,19 @@ namespace Blog.Backend.Controllers
 
                 if (userId == null)
                 {
-                    // 🔓 Anonymous users → ONLY public posts
                     query = query.Where(p => p.IsPublic);
                 }
                 else
                 {
-                    // 🔐 Logged in → Get list of users they follow
                     var followingIds = await _context.Follows
                         .Where(f => f.FollowerId == userId.Value)
                         .Select(f => f.FollowingId)
                         .ToListAsync();
 
-                    // Show posts that are:
-                    // 1. Public posts from anyone
-                    // 2. Private posts from users you follow
-                    // 3. Your own posts (public or private)
                     query = query.Where(p =>
-                        p.IsPublic ||                           // All public posts
-                        p.UserId == userId.Value ||             // Your own posts
-                        (followingIds.Contains(p.UserId))       // Posts from followed users (including their private posts)
+                        p.IsPublic ||
+                        p.UserId == userId.Value ||
+                        followingIds.Contains(p.UserId)
                     );
                 }
 
@@ -230,13 +231,17 @@ namespace Blog.Backend.Controllers
                             .Where(u => u.Id == p.UserId)
                             .Select(u => u.Username)
                             .FirstOrDefault() ?? "Unknown",
+
                         IsPublic = p.IsPublic,
                         ImageUrl = p.ImageUrl,
                         CreatedAt = p.CreatedAt,
                         UpdatedAt = p.UpdatedAt,
-                        LikesCount = 0,
-                        CommentsCount = 0,
-                        IsLiked = false
+
+                        // 🔥 FIXED
+                        LikesCount = _context.Likes.Count(l => l.PostId == p.Id),
+                        CommentsCount = _context.Comments.Count(c => c.PostId == p.Id),
+                        IsLiked = userId.HasValue && _context.Likes
+                            .Any(l => l.PostId == p.Id && l.UserId == userId.Value)
                     })
                     .ToListAsync();
 
@@ -272,33 +277,26 @@ namespace Blog.Backend.Controllers
                         Title = p.Title,
                         Content = p.Content,
                         AuthorId = p.UserId,
-                        AuthorName = _context.Users.Where(u => u.Id == p.UserId).Select(u => u.Username).FirstOrDefault() ?? "Unknown",
+                        AuthorName = _context.Users
+                            .Where(u => u.Id == p.UserId)
+                            .Select(u => u.Username)
+                            .FirstOrDefault() ?? "Unknown",
+
                         IsPublic = p.IsPublic,
                         ImageUrl = p.ImageUrl,
                         CreatedAt = p.CreatedAt,
                         UpdatedAt = p.UpdatedAt,
-                        LikesCount = 0,
-                        CommentsCount = 0,
-                        IsLiked = false
+
+                        // 🔥 FIXED
+                        LikesCount = _context.Likes.Count(l => l.PostId == p.Id),
+                        CommentsCount = _context.Comments.Count(c => c.PostId == p.Id),
+                        IsLiked = currentUserId.HasValue && _context.Likes
+                            .Any(l => l.PostId == p.Id && l.UserId == currentUserId.Value)
                     })
                     .FirstOrDefaultAsync();
 
                 if (post == null)
                     return NotFound("Post not found");
-
-                // Check if user has permission to view this post
-                if (!post.IsPublic && currentUserId != post.AuthorId)
-                {
-                    // Check if user follows the post author
-                    if (!currentUserId.HasValue)
-                        return Forbid("You don't have permission to view this post");
-
-                    var isFollowing = await _context.Follows
-                        .AnyAsync(f => f.FollowerId == currentUserId.Value && f.FollowingId == post.AuthorId);
-
-                    if (!isFollowing)
-                        return Forbid("You don't have permission to view this post");
-                }
 
                 return Ok(post);
             }
@@ -307,6 +305,70 @@ namespace Blog.Backend.Controllers
                 _logger.LogError(ex, "Error getting post");
                 return StatusCode(500, new { error = "Server error", details = ex.Message });
             }
+        }
+
+        [HttpGet("comments/{postId}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetComments(Guid postId)
+        {
+            var comments = await _context.Comments
+                .Where(c => c.PostId == postId)
+                .OrderByDescending(c => c.CreatedAt)
+                .Select(c => new
+                {
+                    c.Id,
+                    c.Content,
+                    c.CreatedAt,
+                    c.UserId,
+                    Username = _context.Users
+                        .Where(u => u.Id == c.UserId)
+                        .Select(u => u.Username)
+                        .FirstOrDefault()
+                })
+                .ToListAsync();
+
+            return Ok(comments);
+        }
+
+        [HttpPost("comment/{postId}")]
+        [Authorize]
+        public async Task<IActionResult> AddComment(Guid postId, [FromBody] string content)
+        {
+            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            var comment = new Comment
+            {
+                Id = Guid.NewGuid(),
+                PostId = postId,
+                UserId = userId,
+                Content = content,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Comments.Add(comment);
+            await _context.SaveChangesAsync();
+
+            return Ok();
+        }
+
+
+        [HttpDelete("comment/{commentId}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteComment(Guid commentId)
+        {
+            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            var comment = await _context.Comments.FindAsync(commentId);
+            if (comment == null)
+                return NotFound();
+
+            if (comment.UserId != userId)
+                return Forbid();
+
+            _context.Comments.Remove(comment);
+            await _context.SaveChangesAsync();
+
+            return Ok();
         }
 
         // PUT: api/Post/{id} - Update post

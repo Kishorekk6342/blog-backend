@@ -23,19 +23,22 @@
             public bool IsPublic { get; set; }
         }
 
-        public class PostResponseDto
-        {
-            public Guid Id { get; set; }
-            public string Title { get; set; } = string.Empty;
-            public string Content { get; set; } = string.Empty;
-            public bool IsPublic { get; set; }
-            public Guid AuthorId { get; set; }
-            public string AuthorName { get; set; } = string.Empty;
-            public DateTime CreatedAt { get; set; }
-            public DateTime UpdatedAt { get; set; }
-            public int LikesCount { get; set; }
-            public int CommentsCount { get; set; }
-            public string? ImageUrl { get; set; }
-            public bool IsLiked { get; set; }
-        }
+    public class PostResponseDto
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public bool IsPublic { get; set; }
+        public Guid AuthorId { get; set; }
+
+        [JsonPropertyName("username")]  // ✅ matches frontend PostDto.Username
+        public string AuthorName { get; set; } = string.Empty;
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public int LikesCount { get; set; }
+        public int CommentsCount { get; set; }
+        public string? ImageUrl { get; set; }
+        public bool IsLiked { get; set; }
     }
+}

@@ -12,8 +12,11 @@
             public DbSet<User> Users { get; set; }
             public DbSet<Post> Posts { get; set; }
             public DbSet<Follow> Follows { get; set; }
-        public DbSet<Notification> Notifications { get; set; }
-        public DbSet<FollowRequest> FollowRequests { get; set; }
+            public DbSet<Notification> Notifications { get; set; }
+            public DbSet<FollowRequest> FollowRequests { get; set; }
+            public DbSet<Like> Likes { get; set; }
+            public DbSet<Comment> Comments { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
@@ -45,6 +48,26 @@
                 .WithMany()
                 .HasForeignKey(n => n.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Add inside OnModelCreating:
+            modelBuilder.Entity<Like>(entity =>
+            {
+                entity.ToTable("likes");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.PostId).HasColumnName("post_id");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            });
+
+            modelBuilder.Entity<Comment>(entity =>
+            {
+                entity.ToTable("comments");
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.PostId).HasColumnName("post_id");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+                entity.Property(e => e.Content).HasColumnName("content");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            });
 
             // ============ FOLLOW CONFIGURATION ============
 
