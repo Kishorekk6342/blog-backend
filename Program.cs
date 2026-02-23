@@ -114,17 +114,16 @@ var app = builder.Build();
 
 // -------------------- PIPELINE --------------------
 
+// -------------------- PIPELINE --------------------
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-app.UseCors("AllowBlazor");
-
+app.UseCors("AllowBlazor");        // ✅ CORS FIRST
+app.UseHttpsRedirection();         // then redirect
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 app.Run();
