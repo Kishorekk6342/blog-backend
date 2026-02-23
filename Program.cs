@@ -88,7 +88,9 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("https://blog-frontend-rr0s.onrender.com")
       .AllowAnyHeader()
-      .AllowAnyMethod();
+      .AllowAnyMethod()
+      .AllowCredentials(); // ✅ important
+
     });
 });
 
