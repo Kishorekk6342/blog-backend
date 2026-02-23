@@ -122,7 +122,6 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 }
 
 app.UseCors("AllowBlazor");        // ✅ CORS FIRST
-app.UseHttpsRedirection();         // then redirect
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
