@@ -86,9 +86,9 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowBlazor", policy =>
     {
-        policy.AllowAnyOrigin()   // ✅ for deployment
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        policy.WithOrigins("https://blog-frontend-rr0s.onrender.com")
+      .AllowAnyHeader()
+      .AllowAnyMethod();
     });
 });
 
