@@ -3,6 +3,7 @@ using Blog.Backend.DTOs;
 using Blog.Backend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Supabase.Gotrue;
 using System.Security.Claims;
@@ -80,29 +81,25 @@ namespace Blog.Backend.Controllers
                 var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
                 var posts = await _context.Posts
-                    .Where(p => p.UserId == userId)
+                    .Include(p => p.User)
+                    .Where(p => p.UserId == userId) // ✅ IMPORTANT (missing before)
                     .OrderByDescending(p => p.CreatedAt)
                     .Select(p => new PostResponseDto
                     {
                         Id = p.Id,
                         Title = p.Title,
                         Content = p.Content,
-                        IsPublic = p.IsPublic,
                         AuthorId = p.UserId,
-                        AuthorName = _context.Users
-                            .Where(u => u.Id == p.UserId)
-                            .Select(u => u.Username)
-                            .FirstOrDefault() ?? "Unknown",
+                        AuthorName = p.User.Username,
 
+                        IsPublic = p.IsPublic,
+                        ImageUrl = p.ImageUrl,
                         CreatedAt = p.CreatedAt,
                         UpdatedAt = p.UpdatedAt,
-                        ImageUrl = p.ImageUrl,
 
-                        // 🔥 FIXED
                         LikesCount = _context.Likes.Count(l => l.PostId == p.Id),
                         CommentsCount = _context.Comments.Count(c => c.PostId == p.Id),
-                        IsLiked = _context.Likes
-                            .Any(l => l.PostId == p.Id && l.UserId == userId)
+                        IsLiked = _context.Likes.Any(l => l.PostId == p.Id && l.UserId == userId)
                     })
                     .ToListAsync();
 
@@ -183,38 +180,33 @@ namespace Blog.Backend.Controllers
         [HttpGet("feed")]
         [AllowAnonymous]
         public async Task<IActionResult> GetFeed(
-      [FromQuery] int page = 1,
-      [FromQuery] int pageSize = 20)
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 20)
         {
             try
             {
-                Guid? userId = null;
+                Guid userId = Guid.Empty;
 
                 if (User.Identity?.IsAuthenticated == true)
                 {
                     var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
-                    if (Guid.TryParse(claim, out var parsed))
-                        userId = parsed;
+                    Guid.TryParse(claim, out userId);
                 }
 
-                IQueryable<Post> query = _context.Posts.AsQueryable();
+                IQueryable<Post> query = _context.Posts.Include(p => p.User);
 
-                if (userId == null)
+                if (userId == Guid.Empty)
                 {
                     query = query.Where(p => p.IsPublic);
                 }
                 else
                 {
-                    var followingIds = await _context.Follows
-                        .Where(f => f.FollowerId == userId.Value)
-                        .Select(f => f.FollowingId)
-                        .ToListAsync();
-
                     query = query.Where(p =>
                         p.IsPublic ||
-                        p.UserId == userId.Value ||
-                        followingIds.Contains(p.UserId)
-                    );
+                        p.UserId == userId ||
+                        _context.Follows.Any(f =>
+                            f.FollowerId == userId &&
+                            f.FollowingId == p.UserId));
                 }
 
                 var posts = await query
@@ -227,21 +219,16 @@ namespace Blog.Backend.Controllers
                         Title = p.Title,
                         Content = p.Content,
                         AuthorId = p.UserId,
-                        AuthorName = _context.Users
-                            .Where(u => u.Id == p.UserId)
-                            .Select(u => u.Username)
-                            .FirstOrDefault() ?? "Unknown",
-
+                        AuthorName = p.User.Username,
                         IsPublic = p.IsPublic,
                         ImageUrl = p.ImageUrl,
                         CreatedAt = p.CreatedAt,
                         UpdatedAt = p.UpdatedAt,
 
-                        // 🔥 FIXED
                         LikesCount = _context.Likes.Count(l => l.PostId == p.Id),
                         CommentsCount = _context.Comments.Count(c => c.PostId == p.Id),
-                        IsLiked = userId.HasValue && _context.Likes
-                            .Any(l => l.PostId == p.Id && l.UserId == userId.Value)
+                        IsLiked = userId != Guid.Empty &&
+                                  _context.Likes.Any(l => l.PostId == p.Id && l.UserId == userId)
                     })
                     .ToListAsync();
 

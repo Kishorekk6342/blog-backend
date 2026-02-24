@@ -87,10 +87,9 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowBlazor", policy =>
     {
         policy.WithOrigins("https://blog-frontend-rr0s.onrender.com")
-      .AllowAnyHeader()
-      .AllowAnyMethod()
-      .AllowCredentials(); // ✅ important
-
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
     });
 });
 
@@ -120,6 +119,8 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseRouting();
 
 app.UseCors("AllowBlazor");        // ✅ CORS FIRST
 app.UseAuthentication();
