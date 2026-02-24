@@ -76,40 +76,42 @@ namespace Blog.Backend.Controllers
         [Authorize]
         public async Task<IActionResult> GetMyPosts()
         {
-            try
+            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            var posts = await _context.Posts
+                .Include(p => p.User)
+                .Where(p => p.UserId == userId)
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
+
+            var postIds = posts.Select(p => p.Id).ToList();
+
+            var likes = await _context.Likes
+                .Where(l => postIds.Contains(l.PostId))
+                .ToListAsync();
+
+            var comments = await _context.Comments
+                .Where(c => postIds.Contains(c.PostId))
+                .ToListAsync();
+
+            var result = posts.Select(p => new PostResponseDto
             {
-                var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+                Id = p.Id,
+                Title = p.Title,
+                Content = p.Content,
+                AuthorId = p.UserId,
+                AuthorName = p.User.Username,
+                IsPublic = p.IsPublic,
+                ImageUrl = p.ImageUrl,
+                CreatedAt = p.CreatedAt,
+                UpdatedAt = p.UpdatedAt,
 
-                var posts = await _context.Posts
-                    .Include(p => p.User)
-                    .Where(p => p.UserId == userId) // ✅ IMPORTANT (missing before)
-                    .OrderByDescending(p => p.CreatedAt)
-                    .Select(p => new PostResponseDto
-                    {
-                        Id = p.Id,
-                        Title = p.Title,
-                        Content = p.Content,
-                        AuthorId = p.UserId,
-                        AuthorName = p.User.Username,
+                LikesCount = likes.Count(l => l.PostId == p.Id),
+                CommentsCount = comments.Count(c => c.PostId == p.Id),
+                IsLiked = likes.Any(l => l.PostId == p.Id && l.UserId == userId)
+            });
 
-                        IsPublic = p.IsPublic,
-                        ImageUrl = p.ImageUrl,
-                        CreatedAt = p.CreatedAt,
-                        UpdatedAt = p.UpdatedAt,
-
-                        LikesCount = _context.Likes.Count(l => l.PostId == p.Id),
-                        CommentsCount = _context.Comments.Count(c => c.PostId == p.Id),
-                        IsLiked = _context.Likes.Any(l => l.PostId == p.Id && l.UserId == userId)
-                    })
-                    .ToListAsync();
-
-                return Ok(posts);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting my posts");
-                return StatusCode(500, new { error = "Server error", details = ex.Message });
-            }
+            return Ok(result);
         }
 
         [HttpGet("user/{userId}")]
@@ -180,8 +182,8 @@ namespace Blog.Backend.Controllers
         [HttpGet("feed")]
         [AllowAnonymous]
         public async Task<IActionResult> GetFeed(
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 20)
+     [FromQuery] int page = 1,
+     [FromQuery] int pageSize = 20)
         {
             try
             {
@@ -193,51 +195,59 @@ namespace Blog.Backend.Controllers
                     Guid.TryParse(claim, out userId);
                 }
 
-                IQueryable<Post> query = _context.Posts.Include(p => p.User);
+                var followingIds = userId == Guid.Empty
+                    ? new List<Guid>()
+                    : await _context.Follows
+                        .Where(f => f.FollowerId == userId)
+                        .Select(f => f.FollowingId)
+                        .ToListAsync();
 
-                if (userId == Guid.Empty)
-                {
-                    query = query.Where(p => p.IsPublic);
-                }
-                else
-                {
-                    query = query.Where(p =>
+                var postsQuery = _context.Posts
+                    .Include(p => p.User)
+                    .Where(p =>
                         p.IsPublic ||
                         p.UserId == userId ||
-                        _context.Follows.Any(f =>
-                            f.FollowerId == userId &&
-                            f.FollowingId == p.UserId));
-                }
-
-                var posts = await query
+                        followingIds.Contains(p.UserId))
                     .OrderByDescending(p => p.CreatedAt)
                     .Skip((page - 1) * pageSize)
-                    .Take(pageSize)
-                    .Select(p => new PostResponseDto
-                    {
-                        Id = p.Id,
-                        Title = p.Title,
-                        Content = p.Content,
-                        AuthorId = p.UserId,
-                        AuthorName = p.User.Username,
-                        IsPublic = p.IsPublic,
-                        ImageUrl = p.ImageUrl,
-                        CreatedAt = p.CreatedAt,
-                        UpdatedAt = p.UpdatedAt,
+                    .Take(pageSize);
 
-                        LikesCount = _context.Likes.Count(l => l.PostId == p.Id),
-                        CommentsCount = _context.Comments.Count(c => c.PostId == p.Id),
-                        IsLiked = userId != Guid.Empty &&
-                                  _context.Likes.Any(l => l.PostId == p.Id && l.UserId == userId)
-                    })
+                var posts = await postsQuery.ToListAsync();
+
+                var postIds = posts.Select(p => p.Id).ToList();
+
+                var likes = await _context.Likes
+                    .Where(l => postIds.Contains(l.PostId))
                     .ToListAsync();
 
-                return Ok(posts);
+                var comments = await _context.Comments
+                    .Where(c => postIds.Contains(c.PostId))
+                    .ToListAsync();
+
+                var result = posts.Select(p => new PostResponseDto
+                {
+                    Id = p.Id,
+                    Title = p.Title,
+                    Content = p.Content,
+                    AuthorId = p.UserId,
+                    AuthorName = p.User.Username,
+                    IsPublic = p.IsPublic,
+                    ImageUrl = p.ImageUrl,
+                    CreatedAt = p.CreatedAt,
+                    UpdatedAt = p.UpdatedAt,
+
+                    LikesCount = likes.Count(l => l.PostId == p.Id),
+                    CommentsCount = comments.Count(c => c.PostId == p.Id),
+                    IsLiked = userId != Guid.Empty &&
+                              likes.Any(l => l.PostId == p.Id && l.UserId == userId)
+                });
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting feed");
-                return StatusCode(500, new { error = "Server error", details = ex.Message });
+                return StatusCode(500, "Error loading feed");
             }
         }
 
@@ -299,6 +309,7 @@ namespace Blog.Backend.Controllers
         public async Task<IActionResult> GetComments(Guid postId)
         {
             var comments = await _context.Comments
+                .Include(c => c.User)
                 .Where(c => c.PostId == postId)
                 .OrderByDescending(c => c.CreatedAt)
                 .Select(c => new
@@ -307,10 +318,7 @@ namespace Blog.Backend.Controllers
                     c.Content,
                     c.CreatedAt,
                     c.UserId,
-                    Username = _context.Users
-                        .Where(u => u.Id == c.UserId)
-                        .Select(u => u.Username)
-                        .FirstOrDefault()
+                    Username = c.User.Username
                 })
                 .ToListAsync();
 
