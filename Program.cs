@@ -122,6 +122,16 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 
 app.UseRouting();
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Method == "OPTIONS")
+    {
+        context.Response.StatusCode = 200;
+        return;
+    }
+    await next();
+});
+
 app.UseCors("AllowBlazor");        // ✅ CORS FIRST
 app.UseAuthentication();
 app.UseAuthorization();
