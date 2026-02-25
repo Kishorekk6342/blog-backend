@@ -88,16 +88,12 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "https://blog-frontend-rr0s.onrender.com",
-                "http://localhost:5000",
-                "https://localhost:7200"
+                "https://blog-frontend-rr0s.onrender.com"
             )
             .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
+            .AllowAnyMethod();
     });
 });
-
 // ✅ SUPABASE (CORRECT WAY)
 builder.Services.AddSingleton<Supabase.Client>(provider =>
 {
