@@ -57,7 +57,11 @@ builder.Services.AddDbContext<BlogDbContext>(options =>
     var conn = builder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new Exception("DefaultConnection missing");
 
-    options.UseNpgsql(conn);
+    options.UseNpgsql(conn, o =>
+    {
+        o.EnableRetryOnFailure(5);
+        o.CommandTimeout(120);
+    });
 });
 
 // JWT
@@ -88,12 +92,15 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                "https://blog-frontend-rr0s.onrender.com"
+                "https://blog-frontend-rr0s.onrender.com",
+                "https://localhost:7022",
+                "http://localhost:7022"
             )
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
 });
+
 // ✅ SUPABASE (CORRECT WAY)
 builder.Services.AddSingleton<Supabase.Client>(provider =>
 {
