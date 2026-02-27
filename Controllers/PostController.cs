@@ -17,10 +17,14 @@ namespace Blog.Backend.Controllers
         private readonly BlogDbContext _context;
         private readonly ILogger<PostController> _logger;
 
-        public PostController(BlogDbContext context, ILogger<PostController> logger)
+        public PostController(
+     BlogDbContext context,
+     ILogger<PostController> logger,
+     Supabase.Client supabase)
         {
             _context = context;
             _logger = logger;
+            _supabase = supabase; // 🔥 THIS LINE IS IMPORTANT
         }
 
         // POST: api/Post - Create new post
@@ -70,6 +74,8 @@ namespace Blog.Backend.Controllers
                 return StatusCode(500, new { error = "Server error", details = ex.Message });
             }
         }
+
+        private readonly Supabase.Client _supabase;
 
         // GET: api/Post/my-posts - Get current user's posts
         [HttpGet("my-posts")]
@@ -182,8 +188,8 @@ namespace Blog.Backend.Controllers
         [HttpGet("feed")]
         [AllowAnonymous]
         public async Task<IActionResult> GetFeed(
-     [FromQuery] int page = 1,
-     [FromQuery] int pageSize = 20)
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
         {
             try
             {
@@ -195,19 +201,23 @@ namespace Blog.Backend.Controllers
                     Guid.TryParse(claim, out userId);
                 }
 
-                var followingIds = userId == Guid.Empty
-                    ? new List<Guid>()
-                    : await _context.Follows
-                        .Where(f => f.FollowerId == userId)
-                        .Select(f => f.FollowingId)
-                        .ToListAsync();
+                List<Guid> followingIds = new();
+
+                if (userId != Guid.Empty)
+                {
+                    // ✅ Only accepted follows (IsAccepted = true), not pending requests
+                    followingIds = await _context.Follows
+     .Where(f => f.FollowerId == userId)
+     .Select(f => f.FollowingId)
+     .ToListAsync();
+                }
 
                 var postsQuery = _context.Posts
                     .Include(p => p.User)
                     .Where(p =>
-                        p.IsPublic ||
-                        p.UserId == userId ||
-                        followingIds.Contains(p.UserId))
+                        p.IsPublic ||                          // all public posts
+                        (userId != Guid.Empty && p.UserId == userId) ||  // own posts (public + private)
+                        (userId != Guid.Empty && followingIds.Contains(p.UserId))) // followed users' posts
                     .OrderByDescending(p => p.CreatedAt)
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize);
@@ -235,7 +245,6 @@ namespace Blog.Backend.Controllers
                     ImageUrl = p.ImageUrl,
                     CreatedAt = p.CreatedAt,
                     UpdatedAt = p.UpdatedAt,
-
                     LikesCount = likes.Count(l => l.PostId == p.Id),
                     CommentsCount = comments.Count(c => c.PostId == p.Id),
                     IsLiked = userId != Guid.Empty &&
@@ -407,6 +416,37 @@ namespace Blog.Backend.Controllers
             {
                 _logger.LogError(ex, "Error updating post");
                 return StatusCode(500, new { error = "Server error", details = ex.Message });
+            }
+        }
+
+        [HttpPost("upload-image")]
+        [Authorize]
+        [ApiExplorerSettings(IgnoreApi = true)] // 🔥 ADD THIS
+        public async Task<IActionResult> UploadImage([FromForm] IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("No file uploaded");
+
+            try
+            {
+                var fileName = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
+
+                using var ms = new MemoryStream();
+                await file.CopyToAsync(ms);
+                var bytes = ms.ToArray();
+
+                var bucket = _supabase.Storage.From("post-images");
+
+                await bucket.Upload(bytes, fileName);
+
+                var publicUrl = bucket.GetPublicUrl(fileName);
+
+                return Ok(new { url = publicUrl });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Upload failed");
+                return StatusCode(500, ex.Message);
             }
         }
 
